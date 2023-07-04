@@ -1,4 +1,6 @@
 # Stream Metrics Route （指标流路由）
+[![Latest Release](https://img.shields.io/github/release/mickeyzzc/stream-metrics-route.svg?style=flat-square)](https://github.com/mickeyzzc/stream-metrics-route/releases/latest) [![Go Report Card](https://goreportcard.com/badge/github.com/mickeyzzc/stream-metrics-route)](https://goreportcard.com/report/github.com/mickeyzzc/stream-metrics-route)
+
 Stream Metrics Route is a Golang application that receives monitoring metrics from Prometheus remote write and distributes them to various backend destinations based on route configuration. Metrics can be forwarded to supported backend types including:
 - Prometheus remote write
 - Kafka

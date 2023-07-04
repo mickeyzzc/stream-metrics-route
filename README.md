@@ -3,6 +3,8 @@ Stream Metrics Route is a Golang application that receives monitoring metrics fr
 - Prometheus remote write
 - Kafka
 By using Prometheus relabeling, metrics received from Prometheus can be dynamically routed to appropriate backend endpoints. This allows for a flexible metrics flow and processing pipeline.
+## Architecture
+![arch](public/image/architecture.png)
 ## Features
 - Supports Prometheus remote write as input
 - Supports Prometheus relabeling for dynamic routing of metrics

@@ -1,5 +1,5 @@
 NAME=stream-metrics-route
-VERSION=v0.1.0
+VERSION=$(shell cat VERSION)
 REPOSITORY=registry.cn-hangzhou.aliyuncs.com/mickeyzzc
 
 .PHONY: all build 

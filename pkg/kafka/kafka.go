@@ -149,7 +149,7 @@ func parseSerializationFormat(value string) (Serializer, error) {
 	case "avro-json":
 		return NewAvroJSONSerializer("schemas/metric.avsc")
 	default:
-		defaultTelemetry.Warn("invalid serialization format, using json , serialization-format-value :", value)
+		defaultTelemetry.Logger.Warn("invalid serialization format, using json", "serialization-format-value", value)
 		return NewJSONSerializer()
 	}
 }

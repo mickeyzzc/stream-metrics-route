@@ -39,23 +39,3 @@ func (o *Telemetry) LevelSet(ctx context.Context, lvl string) {
 		o.Logger.Enabled(ctx, LevelInfo)
 	}
 }
-
-func (o *Telemetry) Debug(msg string, args ...any) {
-	o.Logger.Debug(msg, args...)
-}
-
-func (o *Telemetry) Info(msg string, args ...any) {
-	o.Logger.Info(msg, args...)
-}
-
-func (o *Telemetry) Warn(msg string, args ...any) {
-	o.Logger.Warn(msg, args...)
-}
-
-func (o *Telemetry) Error(msg string, err error, args ...any) {
-	o.Logger.Error(msg, args...)
-}
-
-func (o *Telemetry) Trace(ctx context.Context, msg string, args ...any) {
-	o.Logger.Log(ctx, LevelTrace, msg, args...)
-}

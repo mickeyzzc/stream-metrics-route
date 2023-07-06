@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 )
@@ -31,17 +32,37 @@ type RecoverableError struct {
 }
 
 func NewRemoteWriterUrl(addr string) *RemoteWriterUrl {
+	httpClient, err := config.NewClientFromConfig(config.DefaultHTTPClientConfig, addr)
+	if err != nil {
+		defaultTelemetry.Logger.Error("http client err", err)
+		return nil
+	}
+
+	rt, err := config.NewRoundTripperFromConfig(config.DefaultHTTPClientConfig, addr)
+	if err != nil {
+		defaultTelemetry.Logger.Error("http client err", err)
+		return nil
+	}
+	httpClient.Transport = rt
 	return &RemoteWriterUrl{
 		Addr:    addr,
-		Client:  &http.Client{},
-		timeout: 15 * time.Second,
+		Client:  httpClient,
+		timeout: 5 * time.Second,
 	}
 }
 
 func (r *RemoteWriterUrl) Store(ctx context.Context, tsdata []prompb.TimeSeries) (int, error) {
 	pBuf := proto.NewBuffer(nil)
+	remoteWriteTimeseries.WithLabelValues(r.Addr).Add(float64(len(tsdata)))
 	req, err := buildWriteRequest(tsdata, nil, pBuf, nil)
 	if err != nil {
+		remoteWriteFalseTimeseries.WithLabelValues(r.Addr).Add(float64(len(tsdata)))
+		defaultTelemetry.Logger.Error("buildWriteRequest error", "err", err)
+		return 404, err
+	}
+	if len(req) == 0 {
+		remoteWriteFalseTimeseries.WithLabelValues(r.Addr).Add(float64(len(tsdata)))
+		defaultTelemetry.Logger.Error("buildWriteRequest nil")
 		return 404, err
 	}
 	return r.store(ctx, req)
@@ -54,20 +75,25 @@ func (r *RemoteWriterUrl) Store(ctx context.Context, tsdata []prompb.TimeSeries)
 // req: []byte containing the request payload.
 // int: HTTP status code of the response.
 // error: any errors encountered during the request.
-func (r *RemoteWriterUrl) store(ctx context.Context, req []byte) (int, error) {
+func (r *RemoteWriterUrl) store(c context.Context, req []byte) (int, error) {
 	httpReq, err := http.NewRequest("POST", r.Addr, bytes.NewReader(req))
 	if err != nil {
 		return 404, err
 	}
 
-	httpReq.Header.Add("Content-Encoding", "snappy")
+	httpReq.Header.Set("Content-Encoding", "snappy")
 	httpReq.Header.Set("Content-Type", "application/x-protobuf")
 	httpReq.Header.Set("User-Agent", "stream-metrics-route")
 	httpReq.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
-	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
+	fmt.Println(r.Client)
 	httpResp, err := r.Client.Do(httpReq.WithContext(ctx))
 	if err != nil {
+		defaultTelemetry.Logger.Error("http request error", "err", err, "addr", r.Addr)
+		if nil == httpResp {
+			return 500, RecoverableError{err, defaultBackoff}
+		}
 		return httpResp.StatusCode, RecoverableError{err, defaultBackoff}
 	}
 

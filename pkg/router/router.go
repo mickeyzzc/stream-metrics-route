@@ -17,7 +17,6 @@ var (
 	DefaultRouters = &Routers{
 		Routers: make(map[string]*Router, 0),
 	}
-	defaultTelemetry telemetry.Telemetry
 )
 
 func init() {
@@ -58,8 +57,9 @@ func BuildRouters(cfg *setting.Config) {
 				continue
 			}
 		case setting.RemoteWriter:
-			defaultTelemetry.Logger.Debug("remote connect", "type", r.UpStreams.UpStreamsType)
+			defaultTelemetry.Logger.Debug("remote connect", "type", r.UpStreams.UpStreamsType, "urls", r.UpStreams.UpstreamUrls)
 			route = remote.NewRemoteCluster(
+				r.RouterName,
 				r.HashLabels.Mode,
 				r.HashLabels.Labels,
 				r.UpStreams.UpstreamUrls,
@@ -67,6 +67,7 @@ func BuildRouters(cfg *setting.Config) {
 		default:
 			defaultTelemetry.Logger.Debug("default remote connect", "type", r.UpStreams.UpStreamsType)
 			route = remote.NewRemoteCluster(
+				r.RouterName,
 				r.HashLabels.Mode,
 				r.HashLabels.Labels,
 				r.UpStreams.UpstreamUrls,
@@ -87,6 +88,7 @@ func (rs *Routers) Store(ctx context.Context, req []prompb.TimeSeries) (int, err
 	if len(rs.Routers) == 0 {
 		return 500, nil
 	}
+	go routerTimeseries.WithLabelValues("all").Add(float64(len(req)))
 	for _, r := range rs.Routers {
 		defaultTelemetry.Logger.Debug("store ", "name", r.Name, "len", len(req))
 		filterTs := r.filterLabels(req)
@@ -94,8 +96,11 @@ func (rs *Routers) Store(ctx context.Context, req []prompb.TimeSeries) (int, err
 			defaultTelemetry.Logger.Debug("filter timeseries null ", "name", r.Name)
 			continue
 		}
+		go routerTimeseries.WithLabelValues(r.Name).Add(float64(len(filterTs)))
+		defaultTelemetry.Logger.Debug("filter timeseries ", "name", r.Name, "timeseries", len(filterTs))
 		if _, err := r.RemoteStore.Store(ctx, filterTs); err != nil {
 			//TODO: log
+			go routerFalseTimeseries.WithLabelValues(r.Name).Add(float64(len(filterTs)))
 			defaultTelemetry.Logger.Error("remote store error", "err", err)
 		}
 	}

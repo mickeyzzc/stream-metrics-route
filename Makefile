@@ -6,13 +6,17 @@ REPOSITORY=registry.cn-hangzhou.aliyuncs.com/mickeyzzc
 
 all: build docker
 
-build:
-	@go build -ldflags -v -o ./packet/${VERSION}/${NAME} ./cmd/stream-metrics-route/
-	@tar -zcvf ./packet/${VERSION}/${NAME}-${VERSION}.linux-amd64.tar.gz ./packet/${VERSION}/${NAME}
+build: folder x86 
 
-run: build
-	@chmod +x ./packet/${NAME}
-	./packet/${NAME} -h
+clean:
+	rm -rf ./packet/
+
+folder:
+	@mkdir -p ./packet/${VERSION}/
+
+x86:
+	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags -v -o ./packet/amd64/${VERSION}/${NAME} ./cmd/${NAME}/
+	tar -zcvf ./packet/${VERSION}/${NAME}-${VERSION}.linux-amd64.tar.gz ./packet/amd64/${VERSION}/${NAME}
 
 docker:
 	@docker build . -t ${REPOSITORY}/${NAME}:${VERSION}

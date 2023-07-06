@@ -26,6 +26,7 @@ var (
 	confPath         = flag.String("config.path", defaultConfigPath, "Config Path.")
 	confName         = flag.String("config.name", defaultConfigName, "default name 'config.yaml'")
 	logLevel         = flag.String("log.level", "info", "debug or info")
+	listenPort       = flag.String("listen.port", "8080", "listen port")
 	configFile       = ""
 	receiver         receive.Receive
 	route            = gin.Default()
@@ -47,11 +48,11 @@ func init() {
 	route.GET("/metrics", gin.WrapH(
 		promhttp.HandlerFor(defaultTelemetry.Metrics, promhttp.HandlerOpts{}),
 	))
-
+	router.BuildRouters(defaultCfg)
 }
 
 func main() {
-	router.BuildRouters(defaultCfg)
+
 	router_v1 := route.Group("api/v1")
 	router_v1.POST("write", receiver.Handler())
 	router_v1.POST("receive", receiver.Handler())
@@ -75,7 +76,7 @@ func main() {
 	})
 
 	// Start router in a goroutine
-	go route.Run(":8080")
+	go route.Run(":" + *listenPort)
 
 	// Listen for signals
 	for {

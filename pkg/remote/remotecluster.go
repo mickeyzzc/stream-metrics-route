@@ -14,15 +14,17 @@ type RemoteCluster struct {
 	dimension    int
 	filterLabels []string
 	Writers      map[int]*RemoteWriterUrl
+	Name         string
 }
 
-func NewRemoteCluster(dimension int, filterLabels []string, Urls []string) *RemoteCluster {
-	writers := make(map[int]*RemoteWriterUrl)
+func NewRemoteCluster(name string, dimension int, filterLabels []string, Urls []string) *RemoteCluster {
+	writers := make(map[int]*RemoteWriterUrl, len(Urls))
 	for k, v := range Urls {
 		writers[k] = NewRemoteWriterUrl(v)
 	}
 	return &RemoteCluster{
-		uplen:        len(writers),
+		Name:         name,
+		uplen:        len(Urls),
 		dimension:    dimension,
 		filterLabels: filterLabels,
 		Writers:      writers,
@@ -36,40 +38,53 @@ func NewRemoteCluster(dimension int, filterLabels []string, Urls []string) *Remo
 // Returns the number of time series stored and any possible errors.
 func (r *RemoteCluster) Store(ctx context.Context, req []prompb.TimeSeries) (int, error) {
 	var sendSamplesChan = make(map[int][]prompb.TimeSeries, r.uplen)
+	remoteWriteClusterTimeseries.WithLabelValues(r.Name).Add(float64(len(req)))
 	for _, ts := range req {
 		if len(ts.Labels) == 0 {
+			remoteWriteClusterFalseTimeseries.WithLabelValues(r.Name).Inc()
 			continue
 		}
-		hash := sortLabelsHashKey(ts.Labels)
-		dime := hashMod(r.dimension, hash)
-		ts.Labels = append(ts.Labels, prompb.Label{
-			Name:  "stream_task_id",
-			Value: strconv.Itoa(dime),
-		})
-		sendSeries := prompb.TimeSeries{
-			Labels:  ts.Labels,
-			Samples: ts.GetSamples(),
-		}
-		var hashnode = func(r *RemoteCluster, hash uint32) uint32 {
-			if len(r.filterLabels) > 0 {
-				var tmpLabels = []prompb.Label{}
-				for _, rlabel := range r.filterLabels {
-					for _, label := range ts.Labels {
-						if label.Name == rlabel {
-							tmpLabels = append(tmpLabels, label)
+		if r.uplen > 1 {
+			hash := sortLabelsHashKey(ts.Labels)
+			dime := hashMod(r.dimension, hash)
+			ts.Labels = append(ts.Labels, prompb.Label{
+				Name:  "stream_task_id",
+				Value: strconv.Itoa(dime),
+			})
+			sendSeries := prompb.TimeSeries{
+				Labels:  ts.Labels,
+				Samples: ts.GetSamples(),
+			}
+			var hashnode = func(r *RemoteCluster, hash uint32) uint32 {
+				if len(r.filterLabels) > 0 {
+					var tmpLabels = []prompb.Label{}
+					for _, rlabel := range r.filterLabels {
+						for _, label := range ts.Labels {
+							if label.Name == rlabel {
+								tmpLabels = append(tmpLabels, label)
+							}
 						}
 					}
+					return sortLabelsHashKey(tmpLabels)
 				}
-				return sortLabelsHashKey(tmpLabels)
+				return hash
+			}(r, hash)
+			tmpch := hashMod(r.uplen, hashnode)
+			defaultTelemetry.Logger.Debug("hash Result", "uplen", r.uplen, "hashnode", hashnode, "chanlenum", tmpch)
+			if _, ok := r.Writers[tmpch]; ok {
+				sendSamplesChan[tmpch] = append(sendSamplesChan[tmpch], sendSeries)
 			}
-			return hash
-		}(r, hash)
-		tmpch := hashMod(r.uplen, hashnode)
-		if _, ok := r.Writers[tmpch]; !ok {
-			sendSamplesChan[tmpch] = append(sendSamplesChan[tmpch], sendSeries)
+		} else {
+			sendSeries := prompb.TimeSeries{
+				Labels:  ts.Labels,
+				Samples: ts.GetSamples(),
+			}
+			sendSamplesChan[0] = append(sendSamplesChan[0], sendSeries)
 		}
+
 	}
 	for index, tsdata := range sendSamplesChan {
+		defaultTelemetry.Logger.Debug("send samples", "index", index, "len", len(tsdata))
 		go r.Writers[index].Store(ctx, tsdata)
 	}
 	return 0, nil

@@ -21,7 +21,8 @@ RUN cd /home/stream-metrics-route && \
 FROM alpine:3.18
 COPY --from=build_base /bin/stream-metrics-route /bin/stream-metrics-route
 
-RUN apk add tzdata curl && \
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirror.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && \
+    apk add tzdata curl && \
     cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     echo 'Asia/Shanghai' > /etc/timezone && \
     mkdir -p /stream-metrics-route/conf && \

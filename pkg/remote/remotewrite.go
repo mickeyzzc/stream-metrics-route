@@ -87,7 +87,6 @@ func (r *RemoteWriterUrl) store(c context.Context, req []byte) (int, error) {
 	httpReq.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
-	fmt.Println(r.Client)
 	httpResp, err := r.Client.Do(httpReq.WithContext(ctx))
 	if err != nil {
 		defaultTelemetry.Logger.Error("http request error", "err", err, "addr", r.Addr)

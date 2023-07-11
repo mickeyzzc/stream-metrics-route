@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"strconv"
+	"text/template"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -19,7 +20,7 @@ type Serializer interface {
 }
 
 // Serialize generates the JSON representation for a given Prometheus metric.
-func Serialize(id string, s Serializer, req []prompb.TimeSeries) (map[string][][]byte, error) {
+func Serialize(id string, topicTemplate template.Template, s Serializer, req []prompb.TimeSeries) (map[string][][]byte, error) {
 	promBatches.WithLabelValues(id).Add(float64(1))
 	result := make(map[string][][]byte)
 
@@ -30,10 +31,11 @@ func Serialize(id string, s Serializer, req []prompb.TimeSeries) (map[string][][
 			labels[string(model.LabelName(l.Name))] = string(model.LabelValue(l.Value))
 		}
 
-		t := topic(labels)
+		t := topic(topicTemplate, labels)
 
 		for _, sample := range ts.Samples {
 			name := string(labels["__name__"])
+			defaultTelemetry.Logger.Debug("kafka filter samples", "name", name, "labels", labels)
 			if !filter(name, labels) {
 				objectsFiltered.WithLabelValues(id).Add(float64(1))
 				continue
@@ -100,12 +102,12 @@ func NewAvroJSONSerializer(schemaPath string) (*AvroJSONSerializer, error) {
 	}, nil
 }
 
-func processWriteRequest(id string, req []prompb.TimeSeries) (map[string][][]byte, error) {
+func processWriteRequest(id string, topicTemplate template.Template, req []prompb.TimeSeries) (map[string][][]byte, error) {
 	//defaultTelemetry.Logger.Debug("processing write request", "var :", req)
-	return Serialize(id, serializer, req)
+	return Serialize(id, topicTemplate, serializer, req)
 }
 
-func topic(labels map[string]string) string {
+func topic(topicTemplate template.Template, labels map[string]string) string {
 	var buf bytes.Buffer
 	if err := topicTemplate.Execute(&buf, labels); err != nil {
 		return ""

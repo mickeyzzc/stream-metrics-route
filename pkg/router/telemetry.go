@@ -11,6 +11,14 @@ var defaultTelemetry telemetry.Telemetry
 var metricNamespace string = "stream_router"
 
 var (
+	routerInfo = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: metricNamespace,
+			Name:      "info",
+			Help:      "router info",
+		}, []string{"route_name", "upstream_type", "upstream_url", "upstream_info"},
+	)
+
 	routerTimeseries = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: metricNamespace,
@@ -29,4 +37,5 @@ func init() {
 	defaultTelemetry = telemetry.NewTelemetry()
 	defaultTelemetry.Register(routerTimeseries)
 	defaultTelemetry.Register(routerFalseTimeseries)
+	defaultTelemetry.Register(routerInfo)
 }

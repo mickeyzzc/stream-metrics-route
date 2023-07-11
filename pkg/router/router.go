@@ -6,6 +6,7 @@ import (
 	"stream-metrics-route/pkg/remote"
 	"stream-metrics-route/pkg/setting"
 	"stream-metrics-route/pkg/telemetry"
+	"strings"
 	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -45,17 +46,16 @@ func BuildRouters(cfg *setting.Config) {
 		var route RemoteStore
 		switch r.UpStreams.UpStreamsType {
 		case setting.Kafka:
-			//TODO: kafka
-			defaultTelemetry.Logger.Debug("kafka connect", "host", r.UpStreams.KafkaConfig.KafkaBrokerList)
+			defaultTelemetry.Logger.Debug("kafka connect", "host", r.UpStreams.KafkaConfig.KafkaBrokerList, "topic", r.UpStreams.KafkaConfig.KafkaTopic)
 			route, err = kafka.NewKafka(
 				r.RouterName,
 				r.UpStreams.KafkaConfig,
 			)
 			if err != nil {
-				//TODO: log
 				defaultTelemetry.Logger.Error("kafka connect error", err)
 				continue
 			}
+			routerInfo.WithLabelValues(r.RouterName, string(r.UpStreams.UpStreamsType), r.UpStreams.KafkaConfig.KafkaBrokerList, r.UpStreams.KafkaConfig.KafkaTopic).Set(1)
 		case setting.RemoteWriter:
 			defaultTelemetry.Logger.Debug("remote connect", "type", r.UpStreams.UpStreamsType, "urls", r.UpStreams.UpstreamUrls)
 			route = remote.NewRemoteCluster(
@@ -64,6 +64,7 @@ func BuildRouters(cfg *setting.Config) {
 				r.HashLabels.Labels,
 				r.UpStreams.UpstreamUrls,
 			)
+			routerInfo.WithLabelValues(r.RouterName, string(r.UpStreams.UpStreamsType), strings.Join(r.UpStreams.UpstreamUrls, ","), "").Set(1)
 		default:
 			defaultTelemetry.Logger.Debug("default remote connect", "type", r.UpStreams.UpStreamsType)
 			route = remote.NewRemoteCluster(
@@ -72,6 +73,7 @@ func BuildRouters(cfg *setting.Config) {
 				r.HashLabels.Labels,
 				r.UpStreams.UpstreamUrls,
 			)
+			routerInfo.WithLabelValues(r.RouterName, string(r.UpStreams.UpStreamsType), strings.Join(r.UpStreams.UpstreamUrls, ","), "").Set(1)
 		}
 
 		DefaultRouters.Routers[r.RouterName] = &Router{
@@ -79,11 +81,12 @@ func BuildRouters(cfg *setting.Config) {
 			MetricRelabelConfigs: r.MetricRelabelConfigs,
 			RemoteStore:          route,
 		}
-
+		defaultTelemetry.Logger.Debug("build router", "name", r.RouterName, "info", route)
 	}
 }
 
 func (rs *Routers) Store(ctx context.Context, req []prompb.TimeSeries) (int, error) {
+	defer ctx.Done()
 	defaultTelemetry.Logger.Debug("store num ,", "len", len(rs.Routers))
 	if len(rs.Routers) == 0 {
 		return 500, nil
@@ -98,7 +101,8 @@ func (rs *Routers) Store(ctx context.Context, req []prompb.TimeSeries) (int, err
 		}
 		go routerTimeseries.WithLabelValues(r.Name).Add(float64(len(filterTs)))
 		defaultTelemetry.Logger.Debug("filter timeseries ", "name", r.Name, "timeseries", len(filterTs))
-		if _, err := r.RemoteStore.Store(ctx, filterTs); err != nil {
+
+		if _, err := r.RemoteStore.Store(context.Background(), filterTs); err != nil {
 			//TODO: log
 			go routerFalseTimeseries.WithLabelValues(r.Name).Add(float64(len(filterTs)))
 			defaultTelemetry.Logger.Error("remote store error", "err", err)

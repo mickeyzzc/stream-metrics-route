@@ -16,8 +16,7 @@ import (
 )
 
 var (
-	topicTemplate *template.Template
-	match         = make(map[string]*dto.MetricFamily, 0)
+	match = make(map[string]*dto.MetricFamily, 0)
 
 	kafkaCompression      = "none"
 	kafkaBatchNumMessages = "10000"
@@ -26,13 +25,14 @@ var (
 )
 
 type KafkaClient struct {
-	name     string
-	Producer *kafkaclient.Producer
+	name          string
+	Producer      kafkaclient.Producer
+	TopicTemplate template.Template
 }
 
 func NewKafka(name string, cfg setting.KafkaConfig) (*KafkaClient, error) {
-	var err error
-	topicTemplate, err = parseTopicTemplate(cfg.KafkaTopic)
+	//var err error
+	topicTemplate, err := parseTopicTemplate(cfg.KafkaTopic)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't parse the topic template", err)
 	}
@@ -87,18 +87,22 @@ func NewKafka(name string, cfg setting.KafkaConfig) (*KafkaClient, error) {
 	}
 
 	return &KafkaClient{
-		name:     name,
-		Producer: producer,
+		name:          name,
+		Producer:      *producer,
+		TopicTemplate: *topicTemplate,
 	}, nil
 }
 
 func (k *KafkaClient) Store(ctx context.Context, req []prompb.TimeSeries) (int, error) {
-	metricsPerTopic, err := processWriteRequest(k.name, req)
+	defer ctx.Done()
+	metricsPerTopic, err := processWriteRequest(k.name, k.TopicTemplate, req)
 	if err != nil {
 		return http.StatusInternalServerError, fmt.Errorf("couldn't process write request", err)
 	}
+
 	for topic, metrics := range metricsPerTopic {
 		t := topic
+		defaultTelemetry.Logger.Debug("write request", "name", k.name, "metricsPerTopic", t)
 		part := kafkaclient.TopicPartition{
 			Partition: kafkaclient.PartitionAny,
 			Topic:     &t,

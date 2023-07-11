@@ -14,6 +14,7 @@ require (
 	github.com/prometheus/client_model v0.4.0
 	github.com/prometheus/common v0.44.0
 	github.com/prometheus/prometheus v0.44.0
+	github.com/segmentio/kafka-go v0.4.42
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	golang.org/x/exp v0.0.0-20230515195305-f3d0a9c9a5cc
 	gopkg.in/yaml.v2 v2.4.0
@@ -42,6 +43,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
 	github.com/pelletier/go-toml/v2 v2.0.6 // indirect
+	github.com/pierrec/lz4/v4 v4.1.15 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/procfs v0.9.0 // indirect
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect

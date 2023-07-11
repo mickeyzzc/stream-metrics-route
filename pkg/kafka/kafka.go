@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"stream-metrics-route/pkg/setting"
 	"strings"
 	"text/template"
@@ -19,7 +20,7 @@ var (
 	match = make(map[string]*dto.MetricFamily, 0)
 
 	kafkaCompression      = "none"
-	kafkaBatchNumMessages = "10000"
+	kafkaBatchNumMessages = 10000
 
 	serializer Serializer
 )
@@ -41,7 +42,7 @@ func NewKafka(name string, cfg setting.KafkaConfig) (*KafkaClient, error) {
 		return nil, fmt.Errorf("couldn't parse the match rules", err)
 	}
 	match = matchList
-	if cfg.KafkaBatchNumMessages == "" {
+	if cfg.KafkaBatchNumMessages < 0 {
 		cfg.KafkaBatchNumMessages = kafkaBatchNumMessages
 	}
 	if cfg.KafkaCompression == "" {
@@ -50,7 +51,7 @@ func NewKafka(name string, cfg setting.KafkaConfig) (*KafkaClient, error) {
 	kafkaConfig := kafkaclient.ConfigMap{
 		"bootstrap.servers":   cfg.KafkaBrokerList,
 		"compression.codec":   cfg.KafkaCompression,
-		"batch.num.messages":  cfg.KafkaBatchNumMessages,
+		"batch.num.messages":  strconv.Itoa(cfg.KafkaBatchNumMessages),
 		"go.batch.producer":   true,  // Enable batch producer (for increased performance).
 		"go.delivery.reports": false, // per-message delivery reports to the Events() channel
 	}

@@ -20,7 +20,6 @@ import (
 )
 
 var (
-	match      = make(map[string]*dto.MetricFamily, 0)
 	serializer Serializer
 )
 
@@ -30,7 +29,7 @@ type Serializer interface {
 }
 
 // Serialize generates the JSON representation for a given Prometheus metric.
-func Serialize(id string, topicTemplate template.Template, s Serializer, req []prompb.TimeSeries) (map[string][][]byte, error) {
+func Serialize(id string, topicTemplate template.Template, match map[string]*dto.MetricFamily, s Serializer, req []prompb.TimeSeries) (map[string][][]byte, error) {
 	promBatches.WithLabelValues(id).Add(float64(1))
 	result := make(map[string][][]byte)
 
@@ -45,8 +44,8 @@ func Serialize(id string, topicTemplate template.Template, s Serializer, req []p
 
 		for _, sample := range ts.Samples {
 			name := string(labels["__name__"])
-			defaultTelemetry.Logger.Debug("kafka filter samples", "name", name, "labels", labels)
-			if !filter(name, labels) {
+			//defaultTelemetry.Logger.Debug("kafka filter samples", "name", name, "labels", labels)
+			if !filter(name, labels, match) {
 				objectsFiltered.WithLabelValues(id).Add(float64(1))
 				continue
 			}
@@ -112,9 +111,9 @@ func NewAvroJSONSerializer(schemaPath string) (*AvroJSONSerializer, error) {
 	}, nil
 }
 
-func processWriteRequest(id string, topicTemplate template.Template, req []prompb.TimeSeries) (map[string][][]byte, error) {
+func processWriteRequest(id string, topicTemplate template.Template, match map[string]*dto.MetricFamily, req []prompb.TimeSeries) (map[string][][]byte, error) {
 	//defaultTelemetry.Logger.Debug("processing write request", "var :", req)
-	return Serialize(id, topicTemplate, serializer, req)
+	return Serialize(id, topicTemplate, match, serializer, req)
 }
 
 func topic(topicTemplate template.Template, labels map[string]string) string {
@@ -125,7 +124,7 @@ func topic(topicTemplate template.Template, labels map[string]string) string {
 	return buf.String()
 }
 
-func filter(name string, labels map[string]string) bool {
+func filter(name string, labels map[string]string, match map[string]*dto.MetricFamily) bool {
 	if len(match) == 0 {
 		return true
 	}

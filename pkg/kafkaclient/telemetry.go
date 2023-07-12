@@ -12,12 +12,6 @@ var defaultTelemetry telemetry.Telemetry
 var metricNamespace string = "stream_kafka"
 
 var (
-	httpRequestsTotal = prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Namespace: metricNamespace,
-			Name:      "http_requests_total",
-			Help:      "Count of all http requests",
-		})
 	promBatches = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: metricNamespace,
@@ -58,7 +52,6 @@ var (
 
 func init() {
 	defaultTelemetry = telemetry.NewTelemetry()
-	defaultTelemetry.Register(httpRequestsTotal)
 	defaultTelemetry.Register(promBatches)
 	defaultTelemetry.Register(serializeTotal)
 	defaultTelemetry.Register(serializeFailed)

@@ -10,32 +10,67 @@ import (
 	"text/template"
 	"time"
 
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/compress"
 )
 
 var (
-	defaultBatchSize        = 1000
-	defaultBatchBytes int64 = 1048576
+	defaultBatchSize  = 1000
+	defaultBatchBytes = 1048576
 )
 
 type KafkaClient struct {
 	name          string
+	match         map[string]*dto.MetricFamily
+	compression   compress.Compression
 	Producer      *kafka.Writer
 	TopicTemplate template.Template
+	config        kafka.WriterConfig
 }
 
 func NewKafka(name string, cfg setting.KafkaConfig) (*KafkaClient, error) {
+
 	topicTemplate, err := parseTopicTemplate(cfg.KafkaTopic)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't parse the topic template", err)
+		return nil, fmt.Errorf("couldn't parse the topic template %v", err)
 	}
+
 	matchList, err := parseMatchList(cfg.Match)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't parse the match rules", err)
+		return nil, fmt.Errorf("couldn't parse the match rules %v", err)
 	}
-	match = matchList
+	var kafkaClient = &KafkaClient{
+		name:          name,
+		match:         matchList,
+		TopicTemplate: *topicTemplate,
+	}
+	kafkaClient.newWriterConfig(cfg)
+
+	var compression compress.Compression
+	switch cfg.KafkaCompression {
+	case "snappy":
+		compression = compress.Snappy
+	case "gzip":
+		compression = compress.Gzip
+	case "lz4":
+		compression = compress.Lz4
+	case "zstd":
+		compression = compress.Zstd
+	default:
+		compression = compress.None
+	}
+
+	brokers := strings.Split(cfg.KafkaBrokerList, ",")
+	defaultTelemetry.Logger.Debug("create kafka client", "name", name, "brokers", brokers)
+	kafkaClient.compression = compression
+	kafkaClient.newWriter()
+	return kafkaClient, nil
+}
+
+func (k *KafkaClient) newWriterConfig(cfg setting.KafkaConfig) {
+
 	var balancer kafka.Balancer
 	switch cfg.Balancer {
 	case "crc32":
@@ -52,54 +87,40 @@ func NewKafka(name string, cfg setting.KafkaConfig) (*KafkaClient, error) {
 		balancer = &kafka.LeastBytes{}
 	}
 
-	if cfg.KafkaBatchNumMessages < 0 {
+	if cfg.KafkaBatchNumMessages <= 0 {
 		cfg.KafkaBatchNumMessages = defaultBatchSize
 	}
-	if cfg.KafkaBatchBytes < 0 {
+	if cfg.KafkaBatchBytes <= 0 {
 		cfg.KafkaBatchBytes = defaultBatchBytes
 	}
 
-	var compression compress.Compression
-	switch cfg.KafkaCompression {
-	case "snappy":
-		compression = compress.Snappy
-	case "gzip":
-		compression = compress.Gzip
-	case "lz4":
-		compression = compress.Lz4
-	case "zstd":
-		compression = compress.Zstd
-	default:
-		compression = compress.None
-	}
 	async := false
 	if cfg.Async {
 		async = cfg.Async
 	}
-
-	writer := &kafka.Writer{
-		Addr: kafka.TCP(
-			strings.Split(cfg.KafkaBrokerList, ",")...,
-		),
-		Topic:       cfg.KafkaTopic,
-		BatchSize:   cfg.KafkaBatchNumMessages,
-		BatchBytes:  cfg.KafkaBatchBytes,
-		Compression: compression,
-		Balancer:    balancer,
-		Async:       async,
+	brokers := strings.Split(cfg.KafkaBrokerList, ",")
+	k.config = kafka.WriterConfig{
+		Brokers:    brokers,
+		Topic:      cfg.KafkaTopic,
+		BatchSize:  cfg.KafkaBatchNumMessages,
+		BatchBytes: cfg.KafkaBatchBytes,
+		Balancer:   balancer,
+		Async:      async,
 	}
-	return &KafkaClient{
-		name:          name,
-		Producer:      writer,
-		TopicTemplate: *topicTemplate,
-	}, nil
+}
+
+func (k *KafkaClient) newWriter() {
+	defaultTelemetry.Logger.Info("create kafka writer", "name", k.name)
+	writer := kafka.NewWriter(kafka.WriterConfig{})
+	writer.Compression = k.compression
+	k.Producer = writer
 }
 
 func (k *KafkaClient) Store(ctx context.Context, req []prompb.TimeSeries) (int, error) {
 	defer ctx.Done()
-	metricsPerTopic, err := processWriteRequest(k.name, k.TopicTemplate, req)
+	metricsPerTopic, err := processWriteRequest(k.name, k.TopicTemplate, k.match, req)
 	if err != nil {
-		return http.StatusInternalServerError, fmt.Errorf("couldn't process write request", err)
+		return http.StatusInternalServerError, fmt.Errorf("couldn't process write request %v", err)
 	}
 
 	for topic, metrics := range metricsPerTopic {
@@ -125,16 +146,25 @@ func (k *KafkaClient) Store(ctx context.Context, req []prompb.TimeSeries) (int, 
 				time.Sleep(time.Millisecond * 250)
 				continue
 			}
-
 			if err != nil {
-				defaultTelemetry.Logger.Error("unexpected error", err)
+				defaultTelemetry.Logger.Error("unexpected error", "errmsg", err)
+				if errors.Is(err, kafka.Unknown) {
+					k.newWriter()
+					continue
+				}
+
 			}
 			break
 		}
-
-		if err := k.Producer.Close(); err != nil {
-			defaultTelemetry.Logger.Error("failed to close writer", err)
+		if err != nil {
+			objectsFailed.WithLabelValues(k.name).Add(float64(len(messages)))
+			return http.StatusInternalServerError, err
 		}
+		/*
+			if err := k.Producer.Close(); err != nil {
+				defaultTelemetry.Logger.Error("failed to close writer", "errmsg", err)
+			}
+		*/
 	}
 	return 0, nil
 }

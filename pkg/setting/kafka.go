@@ -3,7 +3,7 @@ package setting
 type KafkaConfig struct {
 	Async                 bool                 `yaml:"async,omitempty"`
 	KafkaBatchNumMessages int                  `yaml:"batch_num_messages,omitempty"`
-	KafkaBatchBytes       int64                `yaml:"batch_bytes,omitempty"`
+	KafkaBatchBytes       int                  `yaml:"batch_bytes,omitempty"`
 	KafkaBrokerList       string               `yaml:"broker_list"`
 	KafkaTopic            string               `yaml:"topic"`
 	Balancer              string               `yaml:"balancer,omitempty"`

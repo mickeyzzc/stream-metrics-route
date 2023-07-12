@@ -4,7 +4,6 @@ go 1.20
 
 require (
 	github.com/VictoriaMetrics/VictoriaMetrics v1.91.2
-	github.com/confluentinc/confluent-kafka-go v1.9.2
 	github.com/gin-gonic/gin v1.8.2
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.4

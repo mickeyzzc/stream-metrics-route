@@ -111,7 +111,7 @@ func (k *KafkaClient) newWriterConfig(cfg setting.KafkaConfig) {
 
 func (k *KafkaClient) newWriter() {
 	defaultTelemetry.Logger.Info("create kafka writer", "name", k.name)
-	writer := kafka.NewWriter(kafka.WriterConfig{})
+	writer := kafka.NewWriter(k.config)
 	writer.Compression = k.compression
 	k.Producer = writer
 }

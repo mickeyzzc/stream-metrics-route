@@ -2,7 +2,7 @@ package router
 
 import (
 	"context"
-	"stream-metrics-route/pkg/kafka"
+	"stream-metrics-route/pkg/kafkaclient"
 	"stream-metrics-route/pkg/remote"
 	"stream-metrics-route/pkg/setting"
 	"stream-metrics-route/pkg/telemetry"
@@ -47,7 +47,7 @@ func BuildRouters(cfg *setting.Config) {
 		switch r.UpStreams.UpStreamsType {
 		case setting.Kafka:
 			defaultTelemetry.Logger.Debug("kafka connect", "host", r.UpStreams.KafkaConfig.KafkaBrokerList, "topic", r.UpStreams.KafkaConfig.KafkaTopic)
-			route, err = kafka.NewKafka(
+			route, err = kafkaclient.NewKafka(
 				r.RouterName,
 				r.UpStreams.KafkaConfig,
 			)

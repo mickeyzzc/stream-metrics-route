@@ -1,17 +1,26 @@
-package kafka
+package kafkaclient
 
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"strconv"
+	"strings"
 	"text/template"
 	"time"
 
+	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
+	"gopkg.in/yaml.v2"
 
 	"github.com/linkedin/goavro"
+)
+
+var (
+	serializer Serializer
 )
 
 // Serializer represents an abstract metrics serializer
@@ -20,7 +29,7 @@ type Serializer interface {
 }
 
 // Serialize generates the JSON representation for a given Prometheus metric.
-func Serialize(id string, topicTemplate template.Template, s Serializer, req []prompb.TimeSeries) (map[string][][]byte, error) {
+func Serialize(id string, topicTemplate template.Template, match map[string]*dto.MetricFamily, s Serializer, req []prompb.TimeSeries) (map[string][][]byte, error) {
 	promBatches.WithLabelValues(id).Add(float64(1))
 	result := make(map[string][][]byte)
 
@@ -35,8 +44,8 @@ func Serialize(id string, topicTemplate template.Template, s Serializer, req []p
 
 		for _, sample := range ts.Samples {
 			name := string(labels["__name__"])
-			defaultTelemetry.Logger.Debug("kafka filter samples", "name", name, "labels", labels)
-			if !filter(name, labels) {
+			//defaultTelemetry.Logger.Debug("kafka filter samples", "name", name, "labels", labels)
+			if !filter(name, labels, match) {
 				objectsFiltered.WithLabelValues(id).Add(float64(1))
 				continue
 			}
@@ -102,9 +111,9 @@ func NewAvroJSONSerializer(schemaPath string) (*AvroJSONSerializer, error) {
 	}, nil
 }
 
-func processWriteRequest(id string, topicTemplate template.Template, req []prompb.TimeSeries) (map[string][][]byte, error) {
+func processWriteRequest(id string, topicTemplate template.Template, match map[string]*dto.MetricFamily, req []prompb.TimeSeries) (map[string][][]byte, error) {
 	//defaultTelemetry.Logger.Debug("processing write request", "var :", req)
-	return Serialize(id, topicTemplate, serializer, req)
+	return Serialize(id, topicTemplate, match, serializer, req)
 }
 
 func topic(topicTemplate template.Template, labels map[string]string) string {
@@ -115,7 +124,7 @@ func topic(topicTemplate template.Template, labels map[string]string) string {
 	return buf.String()
 }
 
-func filter(name string, labels map[string]string) bool {
+func filter(name string, labels map[string]string, match map[string]*dto.MetricFamily) bool {
 	if len(match) == 0 {
 		return true
 	}
@@ -143,4 +152,58 @@ func filter(name string, labels map[string]string) bool {
 		}
 	}
 	return false
+}
+
+func parseMatchList(text string) (map[string]*dto.MetricFamily, error) {
+	var matchRules []string
+	err := yaml.Unmarshal([]byte(text), &matchRules)
+	if err != nil {
+		return nil, err
+	}
+	var metricsList []string
+	for _, v := range matchRules {
+		metricsList = append(metricsList, fmt.Sprintf("%s 0\n", v))
+	}
+
+	metricsText := strings.Join(metricsList, "")
+
+	var parser expfmt.TextParser
+	metricFamilies, err := parser.TextToMetricFamilies(strings.NewReader(metricsText))
+	if err != nil {
+		return nil, fmt.Errorf("couldn't parse match rules: %s", err)
+	}
+	return metricFamilies, nil
+}
+
+func parseSerializationFormat(value string) (Serializer, error) {
+	switch value {
+	case "json":
+		return NewJSONSerializer()
+	case "avro-json":
+		return NewAvroJSONSerializer("schemas/metric.avsc")
+	default:
+		defaultTelemetry.Logger.Warn("invalid serialization format, using json", "serialization-format-value", value)
+		return NewJSONSerializer()
+	}
+}
+
+func parseTopicTemplate(tpl string) (*template.Template, error) {
+	funcMap := template.FuncMap{
+		"replace": func(old, new, src string) string {
+			return strings.Replace(src, old, new, -1)
+		},
+		"substring": func(start, end int, s string) string {
+			if start < 0 {
+				start = 0
+			}
+			if end < 0 || end > len(s) {
+				end = len(s)
+			}
+			if start >= end {
+				panic("template function - substring: start is bigger (or equal) than end. That will produce an empty string.")
+			}
+			return s[start:end]
+		},
+	}
+	return template.New("topic").Funcs(funcMap).Parse(tpl)
 }

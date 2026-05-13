@@ -4,9 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
+	"os"
 	"stream-metrics-route/pkg/setting"
+	"stream-metrics-route/pkg/telemetry"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -28,6 +32,16 @@ type KafkaClient struct {
 	Producer      *kafka.Writer
 	TopicTemplate template.Template
 	config        kafka.WriterConfig
+
+	mu    sync.RWMutex
+	stats KafkaStats
+}
+
+type KafkaStats struct {
+	SuccessCount   int64
+	FailureCount  int64
+	LastSuccessAt time.Time
+	LastFailureAt time.Time
 }
 
 func NewKafka(name string, cfg setting.KafkaConfig) (*KafkaClient, error) {
@@ -116,11 +130,11 @@ func (k *KafkaClient) newWriter() {
 	k.Producer = writer
 }
 
-func (k *KafkaClient) Store(ctx context.Context, req []prompb.TimeSeries) (int, error) {
-	defer ctx.Done()
+func (k *KafkaClient) Store(ctx context.Context, req []prompb.TimeSeries) error {
 	metricsPerTopic, err := processWriteRequest(k.name, k.TopicTemplate, k.match, req)
 	if err != nil {
-		return http.StatusInternalServerError, fmt.Errorf("couldn't process write request %v", err)
+		k.recordFailure()
+		return fmt.Errorf("couldn't process write request %v", err)
 	}
 
 	for topic, metrics := range metricsPerTopic {
@@ -134,37 +148,82 @@ func (k *KafkaClient) Store(ctx context.Context, req []prompb.TimeSeries) (int, 
 			})
 		}
 
-		var err error
-		const retries = 3
-		for i := 0; i < retries; i++ {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
+		var lastErr error
+		var backoff time.Duration
+		const maxRetries = 3
+		const initialBackoff = 100 * time.Millisecond
+		const maxBackoff = 5 * time.Second
 
-			// attempt to create topic prior to publishing the message
-			err = k.Producer.WriteMessages(ctx, messages...)
+		for i := 0; i <= maxRetries; i++ {
+			if i > 0 {
+				select {
+				case <-ctx.Done():
+					k.recordFailure()
+					return ctx.Err()
+				case <-time.After(backoff):
+				}
+				backoff = time.Duration(math.Min(float64(backoff*2), float64(maxBackoff)))
+			}
+
+			writeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			err = k.Producer.WriteMessages(writeCtx, messages...)
+			cancel()
+
+			if err == nil {
+				break
+			}
+
+			lastErr = err
+
 			if errors.Is(err, kafka.LeaderNotAvailable) || errors.Is(err, context.DeadlineExceeded) {
-				time.Sleep(time.Millisecond * 250)
 				continue
 			}
-			if err != nil {
-				defaultTelemetry.Logger.Error("unexpected error", "errmsg", err)
-				if errors.Is(err, kafka.Unknown) {
-					k.newWriter()
-					continue
-				}
-
+			if errors.Is(err, kafka.Unknown) {
+				k.newWriter()
+				continue
 			}
+
 			break
 		}
+
 		if err != nil {
+			k.recordFailure()
 			objectsFailed.WithLabelValues(k.name).Add(float64(len(messages)))
-			return http.StatusInternalServerError, err
+			return fmt.Errorf("kafka write failed after retries: %v", lastErr)
 		}
-		/*
-			if err := k.Producer.Close(); err != nil {
-				defaultTelemetry.Logger.Error("failed to close writer", "errmsg", err)
-			}
-		*/
 	}
-	return 0, nil
+
+	k.recordSuccess()
+	return nil
+}
+
+func (k *KafkaClient) recordSuccess() {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.stats.SuccessCount++
+	k.stats.LastSuccessAt = time.Now()
+}
+
+func (k *KafkaClient) recordFailure() {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.stats.FailureCount++
+	k.stats.LastFailureAt = time.Now()
+}
+
+func (k *KafkaClient) IsHealthy() bool {
+	return true
+}
+
+func (k *KafkaClient) GetStats() map[string]interface{} {
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+
+	return map[string]interface{}{
+		"name":            k.name,
+		"success_count":   k.stats.SuccessCount,
+		"failure_count":   k.stats.FailureCount,
+		"last_success_at": k.stats.LastSuccessAt.Format(time.RFC3339),
+		"last_failure_at": k.stats.LastFailureAt.Format(time.RFC3339),
+	}
 }

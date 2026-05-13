@@ -2,12 +2,14 @@ package router
 
 import (
 	"context"
+	"fmt"
 	"stream-metrics-route/pkg/kafkaclient"
 	"stream-metrics-route/pkg/remote"
 	"stream-metrics-route/pkg/setting"
 	"stream-metrics-route/pkg/telemetry"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
@@ -35,6 +37,10 @@ func NewRouters() {
 
 func GetRouters() *Routers {
 	return DefaultRouters
+}
+
+func Store(ctx context.Context, req []prompb.TimeSeries) []StoreResult {
+	return DefaultRouters.Store(ctx, req)
 }
 
 func BuildRouters(cfg *setting.Config) {
@@ -85,13 +91,28 @@ func BuildRouters(cfg *setting.Config) {
 	}
 }
 
-func (rs *Routers) Store(ctx context.Context, req []prompb.TimeSeries) (int, error) {
-	defer ctx.Done()
+type StoreResult struct {
+	RouterName string
+	Error     error
+	Count     int
+}
+
+func (rs *Routers) Store(ctx context.Context, req []prompb.TimeSeries) []StoreResult {
+	rs.lock.RLock()
+	defer rs.lock.RUnlock()
+
 	defaultTelemetry.Logger.Debug("store num ,", "len", len(rs.Routers))
 	if len(rs.Routers) == 0 {
-		return 500, nil
+		return []StoreResult{{Error: fmt.Errorf("no routers configured")}}
 	}
-	go routerTimeseries.WithLabelValues("all").Add(float64(len(req)))
+
+	routerTimeseries.WithLabelValues("all").Add(float64(len(req)))
+
+	var wg sync.WaitGroup
+	mu := sync.Mutex{}
+	results := make([]StoreResult, 0)
+	resultsMap := make(map[string]StoreResult)
+
 	for _, r := range rs.Routers {
 		defaultTelemetry.Logger.Debug("store ", "name", r.Name, "len", len(req))
 		filterTs := r.filterLabels(req)
@@ -99,16 +120,73 @@ func (rs *Routers) Store(ctx context.Context, req []prompb.TimeSeries) (int, err
 			defaultTelemetry.Logger.Debug("filter timeseries null ", "name", r.Name)
 			continue
 		}
-		go routerTimeseries.WithLabelValues(r.Name).Add(float64(len(filterTs)))
-		defaultTelemetry.Logger.Debug("filter timeseries ", "name", r.Name, "timeseries", len(filterTs))
+		routerTimeseries.WithLabelValues(r.Name).Add(float64(len(filterTs)))
 
-		if _, err := r.RemoteStore.Store(context.Background(), filterTs); err != nil {
-			//TODO: log
-			go routerFalseTimeseries.WithLabelValues(r.Name).Add(float64(len(filterTs)))
-			defaultTelemetry.Logger.Error("remote store error", "err", err)
+		wg.Add(1)
+		go func(router *Router, timeseries []prompb.TimeSeries) {
+			defer wg.Done()
+
+			start := time.Now()
+			err := router.RemoteStore.Store(ctx, timeseries)
+			duration := time.Since(start).Seconds()
+
+			routerWriteDuration.WithLabelValues(router.Name).Observe(duration)
+
+			mu.Lock()
+			defer mu.Unlock()
+
+			if err != nil {
+				routerErrors.WithLabelValues(router.Name, classifyError(err)).Inc()
+				routerFalseTimeseries.WithLabelValues(router.Name).Add(float64(len(timeseries)))
+				defaultTelemetry.Logger.Error("remote store error", "err", err, "router", router.Name)
+				resultsMap[router.Name] = StoreResult{
+					RouterName: router.Name,
+					Error:      err,
+					Count:      len(timeseries),
+				}
+			} else {
+				resultsMap[router.Name] = StoreResult{
+					RouterName: router.Name,
+					Error:      nil,
+					Count:      len(timeseries),
+				}
+			}
+		}(r, filterTs)
+	}
+
+	wg.Wait()
+
+	for _, r := range results {
+		results = append(results, r)
+	}
+	for _, result := range resultsMap {
+		results = append(results, result)
+	}
+
+	return results
+}
+
+func (rs *Routers) IsHealthy() bool {
+	rs.lock.RLock()
+	defer rs.lock.RUnlock()
+
+	for _, r := range rs.Routers {
+		if !r.RemoteStore.IsHealthy() {
+			return false
 		}
 	}
-	return 0, nil
+	return true
+}
+
+func (rs *Routers) GetRouterStats() map[string]interface{} {
+	rs.lock.RLock()
+	defer rs.lock.RUnlock()
+
+	stats := make(map[string]interface{})
+	for name, r := range rs.Routers {
+		stats[name] = r.RemoteStore.GetStats()
+	}
+	return stats
 }
 
 type Router struct {
@@ -118,16 +196,29 @@ type Router struct {
 }
 
 func (r *Router) filterLabels(ts []prompb.TimeSeries) []prompb.TimeSeries {
-	fiterTS := make([]prompb.TimeSeries, 0)
+	filtered := make([]prompb.TimeSeries, 0, len(ts))
 	for _, t := range ts {
+		if len(t.Labels) == 0 {
+			continue
+		}
 		lbs := formatLabelSet(t.Labels)
 		lbls, keep := relabel.Process(lbs, r.MetricRelabelConfigs...)
 		if !keep || lbls.IsEmpty() {
 			continue
 		}
-		fiterTS = append(fiterTS, t)
+		newLabels := make([]prompb.Label, 0, len(lbls))
+		for _, l := range lbls {
+			newLabels = append(newLabels, prompb.Label{
+				Name:  l.Name,
+				Value: l.Value,
+			})
+		}
+		filtered = append(filtered, prompb.TimeSeries{
+			Labels:  newLabels,
+			Samples: t.Samples,
+		})
 	}
-	return fiterTS
+	return filtered
 }
 
 func formatLabelSet(lb []prompb.Label) labels.Labels {
@@ -136,4 +227,42 @@ func formatLabelSet(lb []prompb.Label) labels.Labels {
 		m[v.Name] = v.Value
 	}
 	return labels.FromMap(m)
+}
+
+type MultiError struct {
+	Errors []error
+}
+
+func (me *MultiError) Error() string {
+	if len(me.Errors) == 0 {
+		return ""
+	}
+	if len(me.Errors) == 1 {
+		return me.Errors[0].Error()
+	}
+	return fmt.Sprintf("%d errors: first error: %v", len(me.Errors), me.Errors[0])
+}
+
+func (me *MultiError) Add(err error) {
+	if err != nil {
+		me.Errors = append(me.Errors, err)
+	}
+}
+
+func (me *MultiError) HasError() bool {
+	return len(me.Errors) > 0
+}
+
+func classifyError(err error) string {
+	errStr := err.Error()
+	switch {
+	case strings.Contains(errStr, "timeout"):
+		return "timeout"
+	case strings.Contains(errStr, "connection"):
+		return "connection"
+	case strings.Contains(errStr, "circuit"):
+		return "circuit_breaker"
+	default:
+		return "unknown"
+	}
 }

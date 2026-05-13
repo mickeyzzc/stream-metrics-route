@@ -1,6 +1,6 @@
 # Stream Metrics Route（指标流路由）
 
-[![Latest Release](https://img.shields.io/github/release/mickeyzzc/stream-metrics-route.svg?style=flat-square)](https://github.com/mickeyzzc/stream-metrics-route/releases/latest) [![Go Report Card](https://goreportcard.com/badge/github.com/mickeyzzc/stream-metrics-route)](https://goreportcard.com/report/github.com/mickeyzzc/stream-metrics-route)
+[![Latest Release](https://img.shields.io/github/release/mickeyzzc/stream-metrics-route.svg?style=flat-square)](https://github.com/mickeyzzc/stream-metrics-route/releases/latest) [![Go Report Card](https://goreportcard.com/badge/github.com/mickeyzzc/stream-metrics-route)](https://goreportcard.com/report/github.com/mickeyzzc/stream-metrics-route) [![Release Workflow](https://img.shields.io/github/actions/workflow/status/mickeyzzc/stream-metrics-route/release.yml?style=flat-square&label=Release)](https://github.com/mickeyzzc/stream-metrics-route/actions/workflows/release.yml)
 
 Stream Metrics Route 是一个高性能指标路由网关，支持 Prometheus Remote Write 协议和 Kafka 分发，具备**双重 Hashmod 调度**确保同维度指标一致路由。
 
@@ -112,6 +112,8 @@ router_rule:
 
 ```
 stream-metrics-route/
+├── .github/workflows/          # GitHub Actions 工作流
+│   └── release.yml             # 自动发布工作流
 ├── cmd/stream-metrics-route/   # 程序入口
 ├── pkg/
 │   ├── router/                 # 路由核心（双重 hashmod）
@@ -126,12 +128,42 @@ stream-metrics-route/
 │   ├── architecture_zh.md      # 架构设计（中文）
 │   └── images/                 # 图片资源
 ├── examples/manifests/k8s/    # Kubernetes 部署清单
-└── Dockerfile
+├── CHANGELOG.md               # 版本变更记录
+├── Makefile
+├── Dockerfile
+└── README.md
+```
+
+## CI/CD 自动发布
+
+项目配置了 GitHub Actions 自动发布流程，当推送以 `v` 开头的标签时会自动触发：
+
+```bash
+# 打标签并推送，触发自动发布
+git tag -a v0.2.0 -m "Release v0.2.0"
+git push origin v0.2.0
+```
+
+### 发布内容包括：
+
+- ✅ 多架构 Docker 镜像（amd64/arm64）推送至 `ghcr.io`
+- ✅ Linux 平台二进制文件（amd64/arm64）
+- ✅ GitHub Release 页面自动生成
+- ✅ 自动从 `CHANGELOG.md` 提取发布说明
+
+### 使用 Docker 镜像：
+
+```bash
+# 从 ghcr.io 拉取
+docker pull ghcr.io/mickeyzzc/stream-metrics-route:latest
+# 或指定版本
+docker pull ghcr.io/mickeyzzc/stream-metrics-route:v0.1.2
 ```
 
 ## 相关链接
 
 - [详细英文文档](docs/README.md)
 - [详细中文文档](docs/README_zh.md)
+- [CHANGELOG 版本变更](CHANGELOG.md)
 - [VictoriaMetrics 官方文档](https://docs.victoriametrics.com/)
 - [Prometheus Remote Write 规范](https://prometheus.io/docs/prometheus/latest/storage/)

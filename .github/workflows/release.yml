@@ -74,13 +74,11 @@ jobs:
         id: extract_changelog
         run: |
           if [ -f CHANGELOG.md ]; then
-            # Skip [Unreleased], extract content under the first real version heading
-            awk '
-              /^## \[Unreleased\]/ { next }
-              /^## \[/ { count++; next }
-              count == 1 { print }
-              count >= 2 { exit }
-            ' CHANGELOG.md > release_notes.tmp
+            # Find the first real version heading and extract its content
+            # 1. Delete lines before the version heading (Unreleased section)
+            # 2. Delete the heading line itself
+            # 3. Print until the next version heading or EOF
+            sed '/^## \[Unreleased\]/d' CHANGELOG.md | sed -n '/^## \[/{n; :loop; p; n; /^## \[/q; b loop}' > release_notes.tmp
 
             if [ -s release_notes.tmp ]; then
               {

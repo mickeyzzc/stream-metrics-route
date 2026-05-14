@@ -29,10 +29,3 @@ func buildWriteRequest(samples []prompb.TimeSeries, metadata []prompb.MetricMeta
 	compressed := snappy.Encode(buf, pBuf.Bytes())
 	return compressed, nil
 }
-
-func hashMod(m int, key uint32) int {
-	if m <= 1 {
-		return 0
-	}
-	return int(key % uint32(m))
-}

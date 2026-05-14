@@ -3,10 +3,10 @@ package remote
 import (
 	"context"
 	"fmt"
-	"hash/fnv"
-	"sort"
 	"sync"
 	"time"
+
+	"stream-metrics-route/pkg/common"
 
 	"github.com/prometheus/prometheus/prompb"
 )
@@ -73,8 +73,8 @@ func (r *RemoteCluster) Store(ctx context.Context, req []prompb.TimeSeries) erro
 			continue
 		}
 		if r.uplen > 1 {
-			hash := sortLabelsHashKey(ts.Labels)
-			dime := hashMod(r.dimension, hash)
+			hash := common.SortLabelsHashKey(ts.Labels)
+			dime := common.JumpConsistentHash(uint64(hash), r.dimension)
 			ts.Labels = append(ts.Labels, prompb.Label{
 				Name:  "stream_task_id",
 				Value: fmt.Sprintf("%d", dime),
@@ -93,9 +93,9 @@ func (r *RemoteCluster) Store(ctx context.Context, req []prompb.TimeSeries) erro
 						}
 					}
 				}
-				hashnode = sortLabelsHashKey(tmpLabels)
+				hashnode = common.SortLabelsHashKey(tmpLabels)
 			}
-			tmpch := hashMod(r.uplen, hashnode)
+			tmpch := common.JumpConsistentHash(uint64(hashnode), r.uplen)
 			if _, ok := r.Writers[tmpch]; ok {
 				mu.Lock()
 				sendSamplesChan[tmpch] = append(sendSamplesChan[tmpch], sendSeries)
@@ -192,17 +192,3 @@ func (r *RemoteCluster) GetStats() map[string]interface{} {
 	}
 }
 
-func sortLabelsHashKey(labels []prompb.Label) uint32 {
-	newLabel := make([]string, 0, len(labels)*2)
-	for _, lal := range labels {
-		newLabel = append(newLabel, lal.Name)
-		newLabel = append(newLabel, lal.Value)
-	}
-
-	sort.Strings(newLabel)
-	h := fnv.New32a()
-	for _, v := range newLabel {
-		h.Write([]byte(v))
-	}
-	return h.Sum32()
-}

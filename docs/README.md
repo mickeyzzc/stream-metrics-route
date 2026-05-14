@@ -1,10 +1,10 @@
 # stream-metrics-route
 
-#JJ|A high-performance metrics routing gateway with Jump Consistent Hash scheduling, supporting Prometheus Remote Write protocol and Kafka distribution.
+A high-performance metrics routing gateway with Jump Consistent Hash scheduling, supporting Prometheus Remote Write protocol and Kafka distribution.
 
 ## Features
 
-#WJ|- **Jump Consistent Hash Scheduling**: Ensures metrics with the same dimension are routed to the same backend node
+- **Jump Consistent Hash Scheduling**: Ensures metrics with the same dimension are routed to the same backend node
 - **Prometheus Remote Write Protocol**: Native support for Prometheus remote write endpoints
 - **Kafka Integration**: Optional Kafka producer for asynchronous message distribution
 - **Circuit Breaker**: Built-in circuit breaker pattern to prevent cascade failures
@@ -23,7 +23,7 @@ flowchart LR
     end
 
     subgraph Gateway
-        #JX|        SMR[stream-metrics-route<br/>Jump Consistent Hash<br/>Relabel Filter]
+                SMR[stream-metrics-route<br/>Jump Consistent Hash<br/>Relabel Filter]
     end
 
     subgraph Backend
@@ -191,7 +191,7 @@ curl http://localhost:8080/stats
 | `stream_remote_write_timeseries_total` | Counter | Remote write time series |
 | `stream_remote_write_failures_total` | Counter | Remote write failures |
 
-#PH|## Dual Jump Consistent Hash Algorithm
+## Dual Jump Consistent Hash Algorithm
 
 The core algorithm ensures consistent routing:
 
@@ -199,10 +199,10 @@ The core algorithm ensures consistent routing:
 flowchart TD
     A[Receive TimeSeries] --> B[Calculate Hash of Labels]
     B --> C{Number of Upstreams > 1?}
-    #KV|    C -->|Yes| D[JumpConsistentHash to get stream_task_id]
+        C -->|Yes| D[JumpConsistentHash to get stream_task_id]
     C -->|No| E[Use default routing]
     D --> F[Append stream_task_id Label]
-    #JV|    F --> G[JumpConsistentHash filter labels for node selection]
+        F --> G[JumpConsistentHash filter labels for node selection]
     G --> H[Route to specific upstream]
     E --> H
 ```
@@ -212,7 +212,7 @@ flowchart TD
 For metrics with labels `{job="api", instance="host1"}`:
 
 1. Calculate hash: `hash("instance", "host1", "job", "api")`
-#BJ|2. `dimension = 100`, `stream_task_id = JumpConsistentHash(hash, 100) = 42`
+2. `dimension = 100`, `stream_task_id = JumpConsistentHash(hash, 100) = 42`
 3. Route based on `stream_task_id` to ensure same metrics always go to same node
 
 ## Development

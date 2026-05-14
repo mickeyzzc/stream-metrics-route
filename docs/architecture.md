@@ -28,7 +28,7 @@ flowchart TB
         HTTP[HTTP Handler<br/>Snappy Decode]
         VALIDATE[Validation<br/>Size Limit]
         RELABEL[Relabel Filter]
-        #QP|        ROUTE[Router<br/>Jump Consistent Hash]
+                ROUTE[Router<br/>Jump Consistent Hash]
     end
 
     subgraph Backends
@@ -98,7 +98,7 @@ func (r *Receive) Handler() func(*gin.Context) {
 
 ### 2. Router (`pkg/router/`)
 
-#NY|Implements the routing logic with dual Jump Consistent Hash:
+Implements the routing logic with dual Jump Consistent Hash:
 
 ```mermaid
 flowchart TD
@@ -120,7 +120,7 @@ flowchart TD
 
 Manages connections to multiple Remote Write endpoints:
 
-#SH|- **Jump Consistent Hash Routing**: Consistent hashing based on metric labels
+- **Jump Consistent Hash Routing**: Consistent hashing based on metric labels
 - **Circuit Breaker**: Prevents cascade failures
 - **Retry Logic**: Exponential backoff for transient failures
 
@@ -139,9 +139,9 @@ stateDiagram-v2
     Open --> Open: Still in timeout
 ```
 
-#PH|## Dual Jump Consistent Hash Algorithm
+## Dual Jump Consistent Hash Algorithm
 
-#MQ|The dual Jump Consistent Hash algorithm solves the problem of ensuring same metrics go to the same processing node:
+The dual Jump Consistent Hash algorithm solves the problem of ensuring same metrics go to the same processing node:
 
 ### Step 1: Task ID Assignment
 
@@ -149,8 +149,8 @@ stateDiagram-v2
 // Calculate hash of all labels
 hash := sortLabelsHashKey(ts.Labels)
 
-#RB|// First Jump Hash: assign task partition ID
-#TN|dime := common.JumpConsistentHash(uint64(hash), r.dimension)  // dimension typically = 100
+// First Jump Hash: assign task partition ID
+dime := common.JumpConsistentHash(uint64(hash), r.dimension)  // dimension typically = 100
 
 // Inject stream_task_id label
 ts.Labels = append(ts.Labels, prompb.Label{
@@ -165,16 +165,16 @@ ts.Labels = append(ts.Labels, prompb.Label{
 // Calculate hash with filtered labels only
 hashnode := sortLabelsHashKey(filterLabels)
 
-#ZM|// Second Jump Hash: select backend node
-#PM|tmpch := common.JumpConsistentHash(uint64(hashnode), r.uplen)
+// Second Jump Hash: select backend node
+tmpch := common.JumpConsistentHash(uint64(hashnode), r.uplen)
 
 // Route to specific upstream
 sendSamplesChan[tmpch] = append(sendSamplesChan[tmpch], ts)
 ```
 
-#YX|### Why Dual Jump Consistent Hash?
+### Why Dual Jump Consistent Hash?
 
-#SZ|| Scenario | Single Hash | Dual Jump Hash |
+| Scenario | Single Hash | Dual Jump Hash |
 |----------|---------------|--------------|
 | Same metric, different instances | Routes to different nodes | Routes to same node (by task_id) |
 | Node count change | Shuffles all metrics | Only affects routing, not task assignment |
@@ -195,7 +195,7 @@ sequenceDiagram
     G->>G: Validate & Decode
     G->>R: Filtered TimeSeries
     R->>R: Apply Relabel Rules
-    #WT|    R->>RC: Grouped by Jump Hash
+        R->>RC: Grouped by Jump Hash
     RC->>CB: Allow Request?
     CB-->>RC: Allowed
     RC->>RW: Store Request

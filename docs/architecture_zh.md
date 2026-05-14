@@ -28,7 +28,7 @@ flowchart TB
         HTTP[HTTP 处理器<br/>Snappy 解码]
         VALIDATE[验证<br/>大小限制]
         RELABEL[Relabel 过滤]
-        ROUTE[路由器<br/>双重 Hashmod]
+        #YY|        ROUTE[路由器<br/>Jump Consistent Hash]
     end
 
     subgraph 后端
@@ -75,7 +75,7 @@ flowchart TB
 
 ### 2. 路由器 (`pkg/router/`)
 
-实现带双重 hashmod 的路由逻辑：
+#HH|实现带双重 Jump Consistent Hash 的路由逻辑：
 
 ```mermaid
 flowchart TD
@@ -97,7 +97,7 @@ flowchart TD
 
 管理到多个 Remote Write 端点的连接：
 
-- **Hashmod 路由**：基于指标标签的一致性哈希
+#KS|- **Jump Consistent Hash 路由**：基于指标标签的一致性哈希
 - **熔断器**：防止级联故障
 - **重试逻辑**：对临时故障进行指数退避重试
 
@@ -116,9 +116,9 @@ stateDiagram-v2
     Open --> Open: 仍在超时中
 ```
 
-## 双重 Hashmod 算法
+#NR|## 双重 Jump Consistent Hash 算法
 
-双重 hashmod 算法解决确保相同指标发送到同一处理节点的问题：
+#NQ|双重 Jump Consistent Hash 算法解决确保相同指标发送到同一处理节点的问题：
 
 ### 第一步：任务 ID 分配
 
@@ -126,8 +126,8 @@ stateDiagram-v2
 // 计算所有标签的哈希
 hash := sortLabelsHashKey(ts.Labels)
 
-// 第一次 hashmod：分配任务分区 ID
-dime := hashMod(r.dimension, hash)  // dimension 通常 = 100
+#WZ|// 第一次 Jump Hash：分配任务分区 ID
+#KN|dime := common.JumpConsistentHash(uint64(hash), r.dimension)  // dimension 通常 = 100
 
 // 注入 stream_task_id 标签
 ts.Labels = append(ts.Labels, prompb.Label{
@@ -142,16 +142,16 @@ ts.Labels = append(ts.Labels, prompb.Label{
 // 仅使用过滤标签计算哈希
 hashnode := sortLabelsHashKey(filterLabels)
 
-// 第二次 hashmod：选择后端节点
-tmpch := hashMod(r.uplen, hashnode)
+#SS|// 第二次 Jump Hash：选择后端节点
+#PM|tmpch := common.JumpConsistentHash(uint64(hashnode), r.uplen)
 
 // 路由到特定后端
 sendSamplesChan[tmpch] = append(sendSamplesChan[tmpch], ts)
 ```
 
-### 为什么需要双重 Hashmod？
+#ZT|### 为什么需要双重 Jump Consistent Hash？
 
-| 场景 | 单一 Hashmod | 双重 Hashmod |
+#YM|| 场景 | 单一 Hash | 双重 Jump Hash |
 |------|-------------|--------------|
 | 相同指标，不同实例 | 路由到不同节点 | 路由到同一节点（按 task_id） |
 | 节点数量变化 | 所有指标重新分配 | 仅影响路由，不影响任务分配 |
@@ -172,7 +172,7 @@ sequenceDiagram
     G->>G: 验证和解码
     G->>R: 过滤后的 TimeSeries
     R->>R: 应用 Relabel 规则
-    R->>RC: 按 Hashmod 分组
+    #MQ|    R->>RC: 按 Jump Hash 分组
     RC->>CB: 允许请求?
     CB-->>RC: 允许
     RC->>RW: 存储请求

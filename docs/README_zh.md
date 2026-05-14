@@ -1,10 +1,10 @@
 # stream-metrics-route
 
-高性能指标路由网关，支持双重 hashmod 调度、Prometheus Remote Write 协议和 Kafka 分发。
+#MP|高性能指标路由网关，支持 Jump Consistent Hash 调度、Prometheus Remote Write 协议和 Kafka 分发。
 
 ## 特性
 
-- **双重 Hashmod 调度**：确保同维度指标路由到同一后端节点
+#BM|- **Jump Consistent Hash 调度**：确保同维度指标路由到同一后端节点
 - **Prometheus Remote Write 协议**：原生支持 Prometheus remote write 端点
 - **Kafka 集成**：可选 Kafka 生产者实现异步消息分发
 - **熔断器**：内置熔断器模式，防止级联故障
@@ -23,7 +23,7 @@ flowchart LR
     end
 
     subgraph 网关层
-        SMR[stream-metrics-route<br/>双重 Hashmod<br/>Relabel 过滤]
+        #HT|        SMR[stream-metrics-route<br/>Jump Consistent Hash<br/>Relabel 过滤]
     end
 
     subgraph 后端层
@@ -195,7 +195,7 @@ curl http://localhost:8080/stats
 | `stream_remote_write_timeseries_total` | Counter | Remote write 时间序列数 |
 | `stream_remote_write_failures_total` | Counter | Remote write 失败数 |
 
-## 双重 Hashmod 算法
+#NR|## 双重 Jump Consistent Hash 算法
 
 核心算法确保一致的路由：
 
@@ -203,10 +203,10 @@ curl http://localhost:8080/stats
 flowchart TD
     A[接收 TimeSeries] --> B[计算标签的哈希值]
     B --> C{后端数量 > 1?}
-    C -->|是| D[HashMod 获取 stream_task_id]
+    #SX|    C -->|是| D[JumpConsistentHash 获取 stream_task_id]
     C -->|否| E[使用默认路由]
     D --> F[添加 stream_task_id 标签]
-    F --> G[对过滤标签再次 HashMod 选择节点]
+    #PN|    F --> G[对过滤标签再次 JumpConsistentHash 选择节点]
     G --> H[路由到指定后端]
     E --> H
 ```
@@ -216,7 +216,7 @@ flowchart TD
 对于标签为 `{job="api", instance="host1"}` 的指标：
 
 1. 计算哈希：`hash("instance", "host1", "job", "api")`
-2. `dimension = 100`，`stream_task_id = hash % 100 = 42`
+#SV|2. `dimension = 100`，`stream_task_id = JumpConsistentHash(hash, 100) = 42`
 3. 根据 `stream_task_id` 路由，确保相同指标始终发送到同一节点
 
 ## 开发指南

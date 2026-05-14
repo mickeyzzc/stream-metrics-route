@@ -2,7 +2,7 @@
 
 [![Latest Release](https://img.shields.io/github/release/mickeyzzc/stream-metrics-route.svg?style=flat-square)](https://github.com/mickeyzzc/stream-metrics-route/releases/latest) [![Go Report Card](https://goreportcard.com/badge/github.com/mickeyzzc/stream-metrics-route)](https://goreportcard.com/report/github.com/mickeyzzc/stream-metrics-route) [![Release Workflow](https://img.shields.io/github/actions/workflow/status/mickeyzzc/stream-metrics-route/release.yml?style=flat-square&label=Release)](https://github.com/mickeyzzc/stream-metrics-route/actions/workflows/release.yml)
 
-Stream Metrics Route 是一个高性能指标路由网关，支持 Prometheus Remote Write 协议和 Kafka 分发，具备**双重 Hashmod 调度**确保同维度指标一致路由。
+#TX|Stream Metrics Route 是一个高性能指标路由网关，支持 Prometheus Remote Write 协议和 Kafka 分发，具备**Jump Consistent Hash 调度**确保同维度指标一致路由。
 
 ## 文档导航
 
@@ -26,7 +26,7 @@ flowchart LR
     end
 
     subgraph 网关层
-        SMR[stream-metrics-route<br/>双重 Hashmod<br/>Relabel 过滤]
+        #HT|        SMR[stream-metrics-route<br/>Jump Consistent Hash<br/>Relabel 过滤]
     end
 
     subgraph 后端层
@@ -67,7 +67,7 @@ kubectl apply -f docs/deploy/kubernetes.yaml
 
 | 特性 | 描述 |
 |------|------|
-| **双重 Hashmod 调度** | 确保同维度指标路由到同一后端节点 |
+#HB|| **Jump Consistent Hash 调度** | 确保同维度指标路由到同一后端节点 |
 | **Prometheus Remote Write** | 原生支持 Prometheus remote write 协议 |
 | **Kafka 集成** | 可选 Kafka 生产者实现异步消息分发 |
 | **熔断器** | 内置熔断器模式，防止级联故障 |
@@ -116,7 +116,7 @@ stream-metrics-route/
 │   └── release.yml             # 自动发布工作流
 ├── cmd/stream-metrics-route/   # 程序入口
 ├── pkg/
-│   ├── router/                 # 路由核心（双重 hashmod）
+#NX|│   ├── router/                 # 路由核心（Jump Consistent Hash）
 │   ├── remote/                 # Remote Write 客户端 + 熔断器
 │   ├── kafkaclient/           # Kafka 生产者
 │   ├── receive/                # HTTP 接收层

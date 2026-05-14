@@ -7,45 +7,6 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 )
 
-// --- hashMod ---
-
-func TestHashMod(t *testing.T) {
-	tests := []struct {
-		name string
-		m    int
-		key  uint32
-		want int
-	}{
-		{"m=0 returns 0", 0, 100, 0},
-		{"m=1 returns 0", 1, 100, 0},
-		{"m=1 with key=0 returns 0", 1, 0, 0},
-		{"m>1 basic mod", 10, 100, 0},       // 100 % 10 = 0
-		{"m>1 with remainder", 10, 137, 7},  // 137 % 10 = 7
-		{"m>1 key < m", 100, 42, 42},        // 42 % 100 = 42
-		{"m>1 key=0", 10, 0, 0},
-		{"m negative returns 0", -5, 100, 0},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := hashMod(tc.m, tc.key)
-			if got != tc.want {
-				t.Errorf("hashMod(%d, %d) = %d, want %d", tc.m, tc.key, got, tc.want)
-			}
-		})
-	}
-}
-
-func TestHashModConsistency(t *testing.T) {
-	m, key := 16, uint32(12345)
-	first := hashMod(m, key)
-	for i := 0; i < 100; i++ {
-		got := hashMod(m, key)
-		if got != first {
-			t.Fatalf("hashMod not consistent: got %d on iteration %d, want %d", got, i, first)
-		}
-	}
-}
 
 // --- sortLabels ---
 
@@ -89,8 +50,8 @@ func TestSortLabelsHashKeyOrderIndependent(t *testing.T) {
 		{Name: "job", Value: "node"},
 		{Name: "__name__", Value: "up"},
 	}
-	h1 := sortLabelsHashKey(set1)
-	h2 := sortLabelsHashKey(set2)
+	h1 := SortLabelsHashKey(set1)
+	h2 := SortLabelsHashKey(set2)
 	if h1 != h2 {
 		t.Errorf("sortLabelsHashKey order dependent: %d != %d", h1, h2)
 	}
@@ -101,59 +62,15 @@ func TestSortLabelsHashKeyConsistency(t *testing.T) {
 		{Name: "job", Value: "node"},
 		{Name: "__name__", Value: "up"},
 	}
-	first := sortLabelsHashKey(labels)
+	first := SortLabelsHashKey(labels)
 	for i := 0; i < 100; i++ {
-		got := sortLabelsHashKey(labels)
+		got := SortLabelsHashKey(labels)
 		if got != first {
 			t.Fatalf("sortLabelsHashKey not consistent on iteration %d: got %d, want %d", i, got, first)
 		}
 	}
 }
 
-// --- sortLabelsHashMod ---
-
-func TestSortLabelsHashModEmpty(t *testing.T) {
-	got := sortLabelsHashMod(10, nil)
-	if got != 0 {
-		t.Errorf("sortLabelsHashMod(10, nil) = %d, want 0", got)
-	}
-	got = sortLabelsHashMod(10, []prompb.Label{})
-	if got != 0 {
-		t.Errorf("sortLabelsHashMod(10, []) = %d, want 0", got)
-	}
-}
-
-func TestSortLabelsHashModConsistency(t *testing.T) {
-	labels := []prompb.Label{
-		{Name: "job", Value: "node"},
-		{Name: "__name__", Value: "up"},
-	}
-	m := 16
-	first := sortLabelsHashMod(m, labels)
-	for i := 0; i < 100; i++ {
-		got := sortLabelsHashMod(m, labels)
-		if got != first {
-			t.Fatalf("sortLabelsHashMod not consistent on iteration %d: got %d, want %d", i, got, first)
-		}
-	}
-}
-
-func TestSortLabelsHashModOrderIndependent(t *testing.T) {
-	set1 := []prompb.Label{
-		{Name: "__name__", Value: "up"},
-		{Name: "job", Value: "node"},
-	}
-	set2 := []prompb.Label{
-		{Name: "job", Value: "node"},
-		{Name: "__name__", Value: "up"},
-	}
-	m := 8
-	h1 := sortLabelsHashMod(m, set1)
-	h2 := sortLabelsHashMod(m, set2)
-	if h1 != h2 {
-		t.Errorf("sortLabelsHashMod order dependent: %d != %d", h1, h2)
-	}
-}
 
 // --- marshalLabelsFast / unmarshalLabelsFast ---
 
@@ -258,4 +175,80 @@ func TestUnmarshalLabelsFastNonEmptyTail(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for non-empty tail, got nil")
 	}
+}
+
+// --- JumpConsistentHash ---
+
+func TestJumpConsistentHash_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name       string
+		key        uint64
+		numBuckets int
+		want       int
+	}{
+		{"numBuckets=0 returns 0", 12345, 0, 0},
+		{"numBuckets=-1 returns 0", 12345, -1, 0},
+		{"numBuckets=1 returns 0", 12345, 1, 0},
+		{"numBuckets=2 key=0", 0, 2, 0},
+		{"numBuckets=2 key=1 in range", 1, 2, -1}, // -1 means check range only
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+		got := JumpConsistentHash(tc.key, tc.numBuckets)
+		if tc.want == -1 {
+			// Range-only check: verify result is in [0, numBuckets)
+			if got < 0 || got >= tc.numBuckets {
+				t.Errorf("JumpConsistentHash(%d, %d) = %d, out of range [0, %d)", tc.key, tc.numBuckets, got, tc.numBuckets)
+			}
+		} else if got != tc.want {
+			t.Errorf("JumpConsistentHash(%d, %d) = %d, want %d", tc.key, tc.numBuckets, got, tc.want)
+		}
+		})
+	}
+}
+
+func TestJumpConsistentHash_Consistency(t *testing.T) {
+	key := uint64(9876543210)
+	numBuckets := 16
+	first := JumpConsistentHash(key, numBuckets)
+	for i := 0; i < 100; i++ {
+		got := JumpConsistentHash(key, numBuckets)
+		if got != first {
+			t.Fatalf("JumpConsistentHash not consistent on iteration %d: got %d, want %d", i, got, first)
+		}
+	}
+}
+
+func TestJumpConsistentHash_Distribution(t *testing.T) {
+	const numKeys = 10000
+	numBuckets := 10
+	counts := make(map[int]int)
+	for i := 0; i < numKeys; i++ {
+		bucket := JumpConsistentHash(uint64(i), numBuckets)
+		counts[bucket]++
+	}
+	for b := 0; b < numBuckets; b++ {
+		c := counts[b]
+		pct := float64(c) / float64(numKeys) * 100
+		if pct < 5.0 || pct > 20.0 {
+			t.Errorf("bucket %d: %.1f%% outside [5%%, 20%%] range (count=%d)", b, pct, c)
+		}
+	}
+}
+
+func TestJumpConsistentHash_Migration(t *testing.T) {
+	const numKeys = 10000
+	moved := 0
+	for i := 0; i < numKeys; i++ {
+		old := JumpConsistentHash(uint64(i), 3)
+		new_ := JumpConsistentHash(uint64(i), 4)
+		if old != new_ {
+			moved++
+		}
+	}
+	pct := float64(moved) / float64(numKeys) * 100
+	if pct > 35.0 {
+		t.Errorf("migration from 3\u21924 buckets: %.1f%% moved, expected \u2264 35%%", pct)
+	}
+	t.Logf("migration from 3\u21924: %d/%d keys moved (%.1f%%)", moved, numKeys, pct)
 }

@@ -80,21 +80,25 @@ func sortLabels(labels []prompb.Label) []string {
 	return newLabel
 }
 
-func hashMod(m int, key uint32) int {
-	if m <= 1 {
+// JumpConsistentHash implements the jump consistent hash algorithm from
+// "A Fast, Minimal Memory, Consistent Hash Algorithm" by Lamping & Veach (2014).
+// It maps a key to a bucket in [0, numBuckets) with O(1) time and zero memory overhead.
+// When numBuckets changes from N to N+1, only ~1/(N+1) of keys are remapped.
+func JumpConsistentHash(key uint64, numBuckets int) int {
+	if numBuckets <= 1 {
 		return 0
 	}
-	return int(key % uint32(m))
-}
-
-func sortLabelsHashMod(m int, labels []prompb.Label) int {
-	if len(labels) == 0 {
-		return 0
+	var b int64 = -1
+	var j int64 = 0
+	for j < int64(numBuckets) {
+		b = j
+		key = key*2862933555777941757 + 1
+		j = int64(float64(b+1) * (float64(int64(1)<<31) / float64((key>>33)+1)))
 	}
-	return hashMod(m, sortLabelsHashKey(labels))
+	return int(b)
 }
 
-func sortLabelsHashKey(labels []prompb.Label) uint32 {
+func SortLabelsHashKey(labels []prompb.Label) uint32 {
 	newLabel := make([]string, 0, len(labels)*2)
 	for _, lal := range labels {
 		newLabel = append(newLabel, lal.Name)

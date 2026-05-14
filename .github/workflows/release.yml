@@ -74,8 +74,9 @@ jobs:
         id: extract_changelog
         run: |
           if [ -f CHANGELOG.md ]; then
-            # Extract content between the first and second "## [" headings
+            # Skip [Unreleased], extract content under the first real version heading
             awk '
+              /^## \[Unreleased\]/ { next }
               /^## \[/ { count++; next }
               count == 1 { print }
               count >= 2 { exit }

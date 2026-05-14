@@ -74,23 +74,28 @@ jobs:
         id: extract_changelog
         run: |
           if [ -f CHANGELOG.md ]; then
-            # Find the first real version heading and extract its content
-            # 1. Delete lines before the version heading (Unreleased section)
-            # 2. Delete the heading line itself
-            # 3. Print until the next version heading or EOF
-            sed '/^## \[Unreleased\]/d' CHANGELOG.md | sed -n '/^## \[/{n; :loop; p; n; /^## \[/q; b loop}' > release_notes.tmp
+            # Extract the section for current version from CHANGELOG
+            # Pattern: lines between '## [v$VERSION]' and next '## [' or EOF
+            VERSION_LINE="## [${VERSION}]"
+
+            # Use awk to extract content after the version heading until next heading or EOF
+            awk -v heading="$VERSION_LINE" '
+              index($0, heading) == 1 { found=1; next }
+              found && /^## / { exit }
+              found && NR > 1 { print }
+            ' CHANGELOG.md > release_notes.tmp
 
             if [ -s release_notes.tmp ]; then
-              {
-                echo "body<<EOF"
-                cat release_notes.tmp
-                echo "EOF"
-              } >> $GITHUB_OUTPUT
+              echo "Extracted release notes for ${VERSION}"
+              echo "body_path=release_notes.tmp" >> $GITHUB_OUTPUT
             else
-              echo "body=See CHANGELOG.md for details." >> $GITHUB_OUTPUT
+              echo "WARNING: No matching version section found for ${VERSION} in CHANGELOG.md"
+              echo "Contents of CHANGELOG.md:"
+              head -20 CHANGELOG.md
+              echo 'body=See CHANGELOG.md for details.' >> $GITHUB_OUTPUT
             fi
           else
-            echo "body=See CHANGELOG.md for details." >> $GITHUB_OUTPUT
+            echo 'body=See CHANGELOG.md for details.' >> $GITHUB_OUTPUT
           fi
 
       - name: Create GitHub Release
@@ -98,6 +103,7 @@ jobs:
         with:
           name: Release ${{ env.VERSION }}
           body: ${{ steps.extract_changelog.outputs.body }}
+          body_path: ${{ steps.extract_changelog.outputs.body_path }}
           files: |
             artifacts/stream-metrics-route-${{ env.VERSION }}-linux-amd64.tar.gz
             artifacts/stream-metrics-route-${{ env.VERSION }}-linux-arm64.tar.gz

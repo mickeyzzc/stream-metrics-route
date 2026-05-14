@@ -53,7 +53,7 @@ func init() {
 
 func main() {
 
-	receiver = receive.NewReceive(*maxRequestSize, *writeTimeout)
+	receiver := receive.NewReceive(*maxRequestSize, *writeTimeout)
 
 	router_v1 := route.Group("api/v1")
 	router_v1.POST("write", receiver.Handler())

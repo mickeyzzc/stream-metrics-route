@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"stream-metrics-route/pkg/remote"
 	"stream-metrics-route/pkg/router"
-	"stream-metrics-route/pkg/telemetry"
 	"time"
 
 	"github.com/gin-gonic/gin"

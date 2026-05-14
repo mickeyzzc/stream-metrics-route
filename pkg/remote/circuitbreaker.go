@@ -1,7 +1,6 @@
 package remote
 
 import (
-	"context"
 	"errors"
 	"math"
 	"sync"

@@ -1,21 +1,16 @@
-FROM golang:1.20.5-alpine AS build_base
+FROM golang:1.26-alpine AS build_base
 
-# 为我们的镜像设置必要的环境变量
-ENV GO111MODULE=on \
-    CGO_ENABLED=1 \
-    GOPROXY="https://goproxy.cn,direct"
+ENV CGO_ENABLED=0 \
+    GO111MODULE=on
 
-# 移动到工作目录：/home
 WORKDIR /home/stream-metrics-route
 
-# 将代码复制到容器中
+COPY go.mod go.sum ./
+RUN go mod download
+
 COPY . .
 
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirror.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && \
-    apk add --no-cache gcc musl-dev 
-# 将我们的代码编译成二进制可执行文件 
-RUN cd /home/stream-metrics-route && \
-    go build -ldflags='-w -s -extldflags "-static"' -tags musl,static,netgo  -v -o /bin/stream-metrics-route ./cmd/stream-metrics-route/
+RUN go build -ldflags='-w -s' -v -o /bin/stream-metrics-route ./cmd/stream-metrics-route/
 
 # Start fresh from a smaller image
 FROM alpine:3.18

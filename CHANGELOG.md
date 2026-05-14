@@ -7,53 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [v0.1.2] - 2026-05-13
+## [v0.1.0] - 2026-05-13
 
-### Added
+### 核心功能
 
-- ✨ 完整的中英文文档系统
-  - `docs/README.md` - 英文详细文档
-  - `docs/README_zh.md` - 中文详细文档
-  - `docs/architecture.md` - 英文架构设计文档
-  - `docs/architecture_zh.md` - 中文架构设计文档
-- 📊 GitHub CI/CD 自动发布系统
-  - 支持 `v*` 标签自动触发发布
-  - 自动构建多架构 Docker 镜像（amd64/arm64）
-  - 自动编译多平台二进制文件
-  - 自动从 CHANGELOG.md 提取发布说明
-  - 发布到 GitHub Container Registry (ghcr.io)
-- 📝 CHANGELOG.md 版本变更记录
-- 🎯 项目结构说明和 API 接口文档
-- 📦 Kubernetes 部署清单
+- **双重 Hashmod 调度** — 基于指定标签（如 `__name__`、`job`）进行一致性哈希，确保相同维度的指标始终路由到同一后端节点，避免数据分片丢失
+- **Prometheus Remote Write 接收** — 原生兼容 Prometheus remote write 协议，无缝对接现有 Prometheus/Agent 采集链路
+- **Kafka 异步分发** — 可选 Kafka 生产者，将指标数据异步写入指定 Topic，解耦采集与消费
+- **Relabel 规则过滤** — 完整支持 Prometheus relabeling 规则语法，在路由前对标签进行增删改过滤
+- **内置熔断器** — 对每个后端实例独立维护熔断状态（Closed → Open → Half-Open），自动摘除故障节点，防止级联失败
+- **多后端负载均衡** — 支持同一路由规则配置多个 Remote Write 或 Kafka 后端，自动分摊写入压力
 
-### Changed
+### API 接口
 
-- 📝 更新主 README.md，添加多语言文档导航
-- 📝 添加核心特性表格说明
-- 📝 添加完整的 API 接口文档
-- 📝 更新配置示例格式
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/v1/write` | POST | Prometheus remote write 入口 |
+| `/metrics` | GET | 自身 Prometheus 指标暴露 |
+| `/stats` | GET | 实时路由统计信息 |
+| `/-/health` | GET | 健康检查 |
+| `/-/ready` | GET | 就绪检查 |
 
-### Documentation
+### 部署支持
 
-- 📖 添加双重 Hashmod 算法详解
-- 📖 添加架构流程图和数据流图
-- 📖 添加熔断器状态机说明
-- 📖 添加开发和部署指南
-
-## [v0.1.1] - 2024-01-15
-
-### Added
-
-- 🔌 支持 Prometheus Remote Write 协议
-- 📡 Kafka 生产者集成
-- 🛡️ 内置熔断器模式
-- 🔄 Prometheus Relabel 规则支持
-
-## [v0.1.0] - 2023-12-01
-
-### Added
-
-- 🎉 项目初始化
-- 🚀 双重 Hashmod 调度算法
-- 🌐 HTTP 接收层
-- 📦 基础路由功能
+- Docker 多架构镜像（amd64/arm64）
+- Kubernetes 部署清单
+- Linux 二进制发布（amd64/arm64）

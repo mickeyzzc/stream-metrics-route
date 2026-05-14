@@ -123,7 +123,7 @@ func (r *RemoteCluster) Store(ctx context.Context, req []prompb.TimeSeries) erro
 		wg.Add(1)
 		go func(idx int, data []prompb.TimeSeries) {
 			defer wg.Done()
-			if err := r.Writers[idx].Store(ctx, data); err != nil {
+			if _, err := r.Writers[idx].Store(ctx, data); err != nil {
 				errChan <- err
 			} else {
 				errChan <- nil

@@ -7,5 +7,7 @@ import (
 )
 
 type RemoteStore interface {
-	Store(ctx context.Context, req []prompb.TimeSeries) (int, error)
+	Store(ctx context.Context, req []prompb.TimeSeries) error
+	IsHealthy() bool
+	GetStats() map[string]interface{}
 }

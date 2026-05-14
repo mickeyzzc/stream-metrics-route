@@ -16,10 +16,9 @@ RUN go build -ldflags='-w -s' -v -o /bin/stream-metrics-route ./cmd/stream-metri
 FROM alpine:3.18
 COPY --from=build_base /bin/stream-metrics-route /bin/stream-metrics-route
 
+ENV TZ=UTC
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirror.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && \
     apk add tzdata curl && \
-    cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
-    echo 'Asia/Shanghai' > /etc/timezone && \
     mkdir -p /stream-metrics-route/conf && \
     chmod +x /bin/stream-metrics-route && \
     chown -R nobody:nobody /stream-metrics-route 

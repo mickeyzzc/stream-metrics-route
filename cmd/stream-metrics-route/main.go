@@ -28,6 +28,7 @@ var (
 	listenPort       = flag.String("listen.port", "8080", "listen port")
 	maxRequestSize   = flag.Int64("max.request.size", 100*1024*1024, "max request size in bytes")
 	writeTimeout     = flag.Duration("write.timeout", 30*time.Second, "write timeout")
+	pprofEnabled     = flag.Bool("pprof.enabled", true, "Enable pprof debug endpoints")
 	configFile       = ""
 	route            = gin.Default()
 	defaultTelemetry = telemetry.NewTelemetry()
@@ -85,14 +86,41 @@ func main() {
 		})
 	})
 
-	go route.Run(":" + *listenPort)
-
-	for {
-		select {
-		case <-ch:
-			health = false
-			receive.CheckWriteTask(200 * time.Millisecond)
-			os.Exit(0)
-		}
+	if *pprofEnabled {
+		route.GET("/debug/pprof/*any", gin.WrapH(http.DefaultServeMux))
 	}
+
+	srv := &http.Server{
+		Addr:         ":" + *listenPort,
+		Handler:      route,
+		WriteTimeout: *writeTimeout,
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			defaultTelemetry.Logger.Error("server error", err)
+		}
+	}()
+
+	// Second SIGTERM forces immediate exit
+	go func() {
+		<-ch
+		defaultTelemetry.Logger.Info("forced shutdown")
+		os.Exit(1)
+	}()
+
+	// Wait for first shutdown signal
+	sig := <-ch
+	defaultTelemetry.Logger.Info("received signal, shutting down", map[string]interface{}{"signal": sig.String()})
+	health = false
+
+	// Graceful shutdown with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), *writeTimeout+5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		defaultTelemetry.Logger.Error("server shutdown error", err)
+	}
+
+	defaultTelemetry.Logger.Info("server stopped")
 }

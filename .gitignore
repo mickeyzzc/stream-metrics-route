@@ -17,3 +17,4 @@ bin/
 packet/
 config.yaml
 AGENTS.md
+.sisyphus

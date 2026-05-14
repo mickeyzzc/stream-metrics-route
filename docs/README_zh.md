@@ -50,14 +50,14 @@ flowchart LR
 
 ### 前置条件
 
-- Go 1.23+
+- Go 1.26+
 - Docker（可选）
 - Kubernetes 集群（可选）
 
 ### 从源码构建
 
 ```bash
-git clone https://github.com/your-repo/stream-metrics-route.git
+git clone https://github.com/mickeyzzc/stream-metrics-route.git
 cd stream-metrics-route
 go mod tidy
 go build -o stream-metrics-route ./cmd/stream-metrics-route
@@ -73,7 +73,7 @@ docker run -p 8080:8080 -v $(pwd)/config.yaml:/app/config.yaml stream-metrics-ro
 ### Kubernetes 部署
 
 ```bash
-kubectl apply -f examples/manifests/k8s/deploy.yaml
+kubectl apply -f docs/deploy/kubernetes.yaml
 ```
 
 ## 配置说明
@@ -236,7 +236,7 @@ make build
 ### Docker 构建
 
 ```bash
-make docker-build
+make docker
 ```
 
 ## 项目结构
@@ -275,11 +275,8 @@ stream-metrics-route/
 │   ├── README.md                # 英文文档
 │   ├── README_zh.md             # 中文文档
 │   └── images/                  # 图片资源
-├── examples/
-│   └── manifests/
-│       └── k8s/
-│           └── deploy.yaml      # K8s 部署清单
-├── Dockerfile
+├── docs/deploy/
+│   └── kubernetes.yaml       # K8s 部署清单
 ├── Makefile
 └── go.mod
 ```

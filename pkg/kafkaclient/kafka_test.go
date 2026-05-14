@@ -3,6 +3,8 @@ package kafkaclient_test
 import (
 	"context"
 	"errors"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,11 +13,19 @@ import (
 )
 
 func TestKafkaStore(t *testing.T) {
+	brokers := os.Getenv("KAFKA_BROKERS")
+	if brokers == "" {
+		t.Skip("KAFKA_BROKERS not set, skipping integration test")
+	}
+	topic := os.Getenv("KAFKA_TOPIC")
+	if topic == "" {
+		topic = "test-metrics"
+	}
+	brokerList := strings.Split(brokers, ",")
+
 	writer := &kafka.Writer{
-		Addr: kafka.TCP(
-			"192.168.11.119:9092", "192.168.11.164:9092", "192.168.11.15:9092",
-		),
-		Topic:                  "prometheus_monitor",
+		Addr:                   kafka.TCP(brokerList...),
+		Topic:                  topic,
 		Balancer:               &kafka.LeastBytes{},
 		Compression:            compress.None,
 		AllowAutoTopicCreation: true,

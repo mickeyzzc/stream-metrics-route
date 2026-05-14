@@ -60,7 +60,7 @@ docker run -p 8080:8080 -v $(pwd)/config.yaml:/app/config.yaml stream-metrics-ro
 ### Kubernetes 部署
 
 ```bash
-kubectl apply -f examples/manifests/k8s/deploy.yaml
+kubectl apply -f docs/deploy/kubernetes.yaml
 ```
 
 ## 核心特性
@@ -127,7 +127,7 @@ stream-metrics-route/
 │   ├── architecture.md         # 架构设计（英文）
 │   ├── architecture_zh.md      # 架构设计（中文）
 │   └── images/                 # 图片资源
-├── examples/manifests/k8s/    # Kubernetes 部署清单
+├── docs/deploy/             # Kubernetes 部署清单
 ├── CHANGELOG.md               # 版本变更记录
 ├── Makefile
 ├── Dockerfile

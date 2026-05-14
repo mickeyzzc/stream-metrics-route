@@ -50,14 +50,14 @@ flowchart LR
 
 ### Prerequisites
 
-- Go 1.23+
+- Go 1.26+
 - Docker (optional)
 - Kubernetes cluster (optional)
 
 ### Build from Source
 
 ```bash
-git clone https://github.com/your-repo/stream-metrics-route.git
+git clone https://github.com/mickeyzzc/stream-metrics-route.git
 cd stream-metrics-route
 go mod tidy
 go build -o stream-metrics-route ./cmd/stream-metrics-route
@@ -73,7 +73,7 @@ docker run -p 8080:8080 -v $(pwd)/config.yaml:/app/config.yaml stream-metrics-ro
 ### Kubernetes
 
 ```bash
-kubectl apply -f examples/manifests/k8s/deploy.yaml
+kubectl apply -f docs/deploy/kubernetes.yaml
 ```
 
 ## Configuration
@@ -232,7 +232,7 @@ make build
 ### Docker Build
 
 ```bash
-make docker-build
+make docker
 ```
 
 ## Contributing
